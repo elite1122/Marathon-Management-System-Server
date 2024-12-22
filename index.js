@@ -8,12 +8,8 @@ const { MongoClient, ServerApiVersion } = require('mongodb');
 app.use(cors());
 app.use(express.json());
 
-// DB_USER = marathon_manager
-// DB_PASS = Pq8WQleoFEFjEw1S
 
-
-
-const uri = "mongodb+srv://<db_username>:<db_password>@elite.i866s.mongodb.net/?retryWrites=true&w=majority&appName=Elite";
+const uri = `mongodb+srv://${process.env.DB_USER}:${process.env.DB_PASS}@elite.i866s.mongodb.net/?retryWrites=true&w=majority&appName=Elite`;
 
 // Create a MongoClient with a MongoClientOptions object to set the Stable API version
 const client = new MongoClient(uri, {
