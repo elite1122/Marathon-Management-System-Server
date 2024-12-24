@@ -60,6 +60,37 @@ async function run() {
         res.send(result);
     })
 
+     // Update marathon data (new endpoint)
+     app.put('/marathons/:id', async (req, res) => {
+        const id = req.params.id;
+        const updatedMarathon = req.body;
+
+        // Validate if the marathon exists
+        const query = { _id: new ObjectId(id) };
+        const existingMarathon = await marathonsCollection.findOne(query);
+        if (!existingMarathon) {
+            return res.status(404).json({ message: "Marathon not found" });
+        }
+
+        // Update the marathon
+        const result = await marathonsCollection.updateOne(
+            query,
+            { $set: updatedMarathon } // Updates the marathon with the new data
+        );
+
+        // Send the updated marathon as response
+        res.send(result);
+    });
+
+    // Delete Created Marathon
+    app.delete('/marathons/:id', async (req, res) => {
+        const id = req.params.id;
+        const query = { _id: new ObjectId(id) };
+        const result = await marathonsCollection.deleteOne(query);
+        res.send(result);
+    })
+
+
     await client.connect();
     // Send a ping to confirm a successful connection
     await client.db("admin").command({ ping: 1 });
