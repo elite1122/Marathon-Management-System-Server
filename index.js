@@ -1,7 +1,7 @@
+require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
 const app = express();
-require('dotenv').config();
 const port = process.env.PORT || 5000;
 const { MongoClient, ServerApiVersion, ObjectId } = require('mongodb');
 
@@ -52,6 +52,18 @@ async function run() {
                 .limit(6)
                 .toArray();
             res.send(marathonsInHome);
+        })
+
+        // 
+        app.get('/registerMarathon', async (req, res) => {
+            const email = req.query.email;
+            let query = {};
+            if (email) {
+                query = { email: email }
+            }
+            const cursor = marathonRegistrationCollection.find(query);
+            const result = await cursor.toArray();
+            res.send(result);
         })
 
         // New marathon create
@@ -121,6 +133,28 @@ async function run() {
             res.send(result);
         });
 
+        // Update Registration data
+        app.put('/registerMarathon/:id', async (req, res) => {
+            const id = req.params.id;
+            const updatedRegisterInfo = req.body;
+
+            // Validate if the marathon exists
+            const query = { _id: new ObjectId(id) };
+            const existingRegistration = await marathonRegistrationCollection.findOne(query);
+            if (!existingRegistration) {
+                return res.status(404).json({ message: "Registration not found" });
+            }
+
+            // Update the marathon
+            const result = await marathonRegistrationCollection.updateOne(
+                query,
+                { $set: updatedRegisterInfo } // Updates the marathon with the new data
+            );
+
+            // Send the updated marathon as response
+            res.send(result);
+        });
+
         // Delete Created Marathon
         app.delete('/marathons/:id', async (req, res) => {
             const id = req.params.id;
@@ -129,10 +163,18 @@ async function run() {
             res.send(result);
         })
 
+        //Delete Registration
+        app.delete('/registerMarathon/:id', async (req, res) => {
+            const id = req.params.id;
+            const query = { _id: new ObjectId(id) };
+            const result = await marathonRegistrationCollection.deleteOne(query);
+            res.send(result);
+        })
 
-        await client.connect();
+
+        // await client.connect();
         // Send a ping to confirm a successful connection
-        await client.db("admin").command({ ping: 1 });
+        // await client.db("admin").command({ ping: 1 });
         console.log("Pinged your deployment. You successfully connected to MongoDB!");
 
 
