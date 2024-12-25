@@ -29,11 +29,13 @@ async function run() {
         // All marathons data
         app.get('/marathons', async (req, res) => {
             const email = req.query.email;
+            const sortOrder = req.query.sort === 'desc' ? -1 : 1;
             let query = {};
             if (email) {
                 query = { creatorEmail: email }
             }
-            const cursor = marathonsCollection.find(query);
+
+            const cursor = marathonsCollection.find(query).sort({ createdAt: sortOrder });
             const result = await cursor.toArray();
             res.send(result);
         })
