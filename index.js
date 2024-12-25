@@ -56,17 +56,24 @@ async function run() {
             res.send(marathonsInHome);
         })
 
-        // 
+        // All Register Marathon data get related apis
         app.get('/registerMarathon', async (req, res) => {
             const email = req.query.email;
+            const searchQuery = req.query.search || ''; // Default to an empty string if no search query is provided
             let query = {};
+        
             if (email) {
-                query = { email: email }
+                query.email = email; // Filter by user email
             }
-            const cursor = marathonRegistrationCollection.find(query);
-            const result = await cursor.toArray();
-            res.send(result);
-        })
+
+            if (searchQuery) {
+                query.marathonTitle = { $regex: searchQuery, $options: 'i' }; // Case-insensitive search
+            }
+                const cursor = marathonRegistrationCollection.find(query);
+                const result = await cursor.toArray();
+                res.send(result);
+        });
+        
 
         // New marathon create
         app.post('/marathons', async (req, res) => {
