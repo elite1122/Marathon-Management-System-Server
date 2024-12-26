@@ -1,12 +1,39 @@
 require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
+const jwt = require('jsonwebtoken');
+const cookieParser = require('cookie-parser');
 const app = express();
 const port = process.env.PORT || 5000;
 const { MongoClient, ServerApiVersion, ObjectId } = require('mongodb');
 
-app.use(cors());
+app.use(cors({
+    origin: [
+        'http://localhost:5173',
+        'https://gomarathonbd.web.app',
+        'https://gomarathonbd.firebaseapp.com'
+    ],
+    credentials: true,
+}));
 app.use(express.json());
+app.use(cookieParser());
+
+const verifyToken = (req, res, next) => {
+    const token = req.cookies?.token;
+
+    if (!token) {
+        return res.status(401).send({ message: 'unauthorized access' });
+    }
+
+    // verify the token
+    jwt.verify(token, process.env.ACCESS_TOKEN_SECRET, (err, decoded) => {
+        if (err) {
+            return res.status(401).send({ message: 'unauthorized access' });
+        }
+        req.user = decoded;
+        next();
+    })
+}
 
 
 const uri = `mongodb+srv://${process.env.DB_USER}:${process.env.DB_PASS}@elite.i866s.mongodb.net/?retryWrites=true&w=majority&appName=Elite`;
@@ -26,11 +53,37 @@ async function run() {
         const marathonsCollection = client.db('marathonManagementDB').collection('marathons');
         const marathonRegistrationCollection = client.db('marathonManagementDB').collection('registerInfo');
 
+        // auth related APIs
+        app.post('/jwt', (req, res) => {
+            const user = req.body;
+            const token = jwt.sign(user, process.env.ACCESS_TOKEN_SECRET, { expiresIn: '10h' });
+
+            res
+                .cookie('token', token, {
+                    httpOnly: true,
+                    secure: process.env.NODE_ENV === 'production',
+                    sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'strict'
+                })
+                .send({ success: true })
+
+        });
+
+        app.post('/logout', (req, res) => {
+            res
+                .clearCookie('token', {
+                    httpOnly: true,
+                    secure: process.env.NODE_ENV === 'production',
+                    sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'strict'
+                })
+                .send({ success: true })
+        })
+
         // All marathons data
-        app.get('/marathons', async (req, res) => {
+        app.get('/marathons', verifyToken, async (req, res) => {
             const email = req.query.email;
             const sortOrder = req.query.sort === 'desc' ? -1 : 1;
             let query = {};
+
             if (email) {
                 query = { creatorEmail: email }
             }
@@ -57,11 +110,17 @@ async function run() {
         })
 
         // All Register Marathon data get related apis
-        app.get('/registerMarathon', async (req, res) => {
+        app.get('/registerMarathon', verifyToken, async (req, res) => {
             const email = req.query.email;
             const searchQuery = req.query.search || ''; // Default to an empty string if no search query is provided
+
+            // token email !== query email
+            if (req.user.email !== req.query.email) {
+                return res.status(403).send({ message: 'forbidden access' })
+            }
+
             let query = {};
-        
+
             if (email) {
                 query.email = email; // Filter by user email
             }
@@ -69,11 +128,11 @@ async function run() {
             if (searchQuery) {
                 query.marathonTitle = { $regex: searchQuery, $options: 'i' }; // Case-insensitive search
             }
-                const cursor = marathonRegistrationCollection.find(query);
-                const result = await cursor.toArray();
-                res.send(result);
+            const cursor = marathonRegistrationCollection.find(query);
+            const result = await cursor.toArray();
+            res.send(result);
         });
-        
+
 
         // New marathon create
         app.post('/marathons', async (req, res) => {
@@ -172,19 +231,53 @@ async function run() {
             res.send(result);
         })
 
-        //Delete Registration
+        // Delete Registration
         app.delete('/registerMarathon/:id', async (req, res) => {
             const id = req.params.id;
             const query = { _id: new ObjectId(id) };
-            const result = await marathonRegistrationCollection.deleteOne(query);
-            res.send(result);
-        })
+
+            try {
+                // Step 1: Retrieve the marathonId before deletion
+                const registration = await marathonRegistrationCollection.findOne(query);
+                if (!registration) {
+                    return res.status(404).json({ message: 'Registration not found' });
+                }
+
+                const marathonId = registration.marathonId;
+
+                // Step 2: Delete the registration
+                const deleteResult = await marathonRegistrationCollection.deleteOne(query);
+                if (deleteResult.deletedCount === 0) {
+                    return res.status(500).json({ message: 'Failed to delete registration' });
+                }
+
+                // Step 3: Decrement the totalRegistrationCount for the marathon
+                const updateResult = await marathonsCollection.updateOne(
+                    { _id: new ObjectId(marathonId) },
+                    { $inc: { totalRegistrationCount: -1 } }
+                );
+
+                // Log success or warning
+                if (updateResult.modifiedCount === 1) {
+                    console.log('Total registration count decremented successfully.');
+                } else {
+                    console.warn('Registration deleted, but failed to update registration count.');
+                }
+
+                // Step 4: Send a success response
+                res.status(200).json({ message: 'Registration deleted successfully' });
+            } catch (error) {
+                console.error('Error in DELETE /registerMarathon:', error);
+                res.status(500).json({ message: 'Internal server error' });
+            }
+        });
+
 
 
         // await client.connect();
         // Send a ping to confirm a successful connection
         // await client.db("admin").command({ ping: 1 });
-        console.log("Pinged your deployment. You successfully connected to MongoDB!");
+        // console.log("Pinged your deployment. You successfully connected to MongoDB!");
 
 
     } finally {
